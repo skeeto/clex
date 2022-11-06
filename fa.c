@@ -1,4 +1,5 @@
 #include "fa.h"
+#include "arena.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -6,16 +7,30 @@
 
 #undef EOF
 
-Node *makeNode(bool isStart, bool isFinish) {
-  Node *result = malloc(sizeof(Node));
+typedef struct Lexer {
+    Arena *arena;
+    const char *lexerContent;
+    size_t lexerPosition;
+    Node *lastBeforeParanEntry;
+    Node *beforeParanEntry;
+    Node *paranEntry;
+    bool inPipe;
+    bool pipeSeen;
+    bool inBackslash;
+    char **drawSeen;
+    char **getFinishNodeSeen;
+} Lexer;
+
+Node *makeNode(Lexer *x, bool isStart, bool isFinish) {
+  Node *result = alloc(x->arena, sizeof(Node));
   result->isStart = isStart;
   result->isFinish = isFinish;
-  result->transitions = calloc(100, sizeof(Transition *));
+  result->transitions = alloc(x->arena, 100*sizeof(Transition *));
   return result;
 }
 
-Transition *makeTransition(char fromValue, char toValue, Node *to) {
-  Transition *result = malloc(sizeof(Transition));
+Transition *makeTransition(Lexer *x, char fromValue, char toValue, Node *to) {
+  Transition *result = alloc(x->arena, sizeof(Transition));
   result->fromValue = fromValue;
   result->toValue = toValue;
   result->to = to;
@@ -42,86 +57,77 @@ typedef struct Token {
   char lexeme;
 } Token;
 
-static const char *lexerContent;
-static size_t lexerPosition;
-static Node *lastBeforeParanEntry = NULL;
-static Node *beforeParanEntry = NULL;
-static Node *paranEntry = NULL;
-static bool inPipe = false;
-static bool pipeSeen = false;
-static bool inBackslash = false;
-static char **drawSeen = NULL;
-static char **getFinishNodeSeen = NULL;
-
-void initLexer(const char *content) {
-  lexerContent = content;
-  lexerPosition = 0;
-  lastBeforeParanEntry = NULL;
-  beforeParanEntry = NULL;
-  paranEntry = NULL;
-  inPipe = false;
-  pipeSeen = false;
-  drawSeen = NULL;
-  getFinishNodeSeen = NULL;
+void initLexer(Lexer *x, Arena *a, const char *content) {
+  x->arena = a;
+  x->lexerContent = content;
+  x->lexerPosition = 0;
+  x->lastBeforeParanEntry = NULL;
+  x->beforeParanEntry = NULL;
+  x->paranEntry = NULL;
+  x->inPipe = false;
+  x->pipeSeen = false;
+  x->inBackslash = false;
+  x->drawSeen = NULL;
+  x->getFinishNodeSeen = NULL;
 }
 
-Token *makeToken(TokenKind kind) {
-  Token *result = malloc(sizeof(Token));
+Token *makeToken(Lexer *x, TokenKind kind) {
+  Token *result = alloc(x->arena, sizeof(Token));
   result->kind = kind;
   return result;
 }
 
-Token *makeLexemeToken(TokenKind kind, char lexeme) {
-  Token *result = malloc(sizeof(Token));
+Token *makeLexemeToken(Lexer *x, TokenKind kind, char lexeme) {
+  Token *result = alloc(x->arena, sizeof(Token));
   result->kind = kind;
   result->lexeme = lexeme;
   return result;
 }
 
-Token *lex() {
-  switch (lexerContent[lexerPosition]) {
+Token *lex(Lexer *x) {
+  switch (x->lexerContent[x->lexerPosition]) {
     case '\0':
-      return makeToken(EOF);
+      return makeToken(x, EOF);
     case '(':
-      lexerPosition++;
-      return makeLexemeToken(OPARAN, '(');
+      x->lexerPosition++;
+      return makeLexemeToken(x, OPARAN, '(');
     case ')':
-      lexerPosition++;
-      return makeLexemeToken(CPARAN, ')');
+      x->lexerPosition++;
+      return makeLexemeToken(x, CPARAN, ')');
     case '[':
-      lexerPosition++;
-      return makeLexemeToken(OSBRACKET, '[');
+      x->lexerPosition++;
+      return makeLexemeToken(x, OSBRACKET, '[');
     case ']':
-      lexerPosition++;
-      return makeLexemeToken(CSBRACKET, ']');
+      x->lexerPosition++;
+      return makeLexemeToken(x, CSBRACKET, ']');
     case '-':
-      lexerPosition++;
-      return makeLexemeToken(DASH, '-');
+      x->lexerPosition++;
+      return makeLexemeToken(x, DASH, '-');
     case '|':
-      lexerPosition++;
-      return makeLexemeToken(PIPE, '|');
+      x->lexerPosition++;
+      return makeLexemeToken(x, PIPE, '|');
     case '*':
-      lexerPosition++;
-      return makeLexemeToken(STAR, '*');
+      x->lexerPosition++;
+      return makeLexemeToken(x, STAR, '*');
     case '+':
-      lexerPosition++;
-      return makeLexemeToken(PLUS, '+');
+      x->lexerPosition++;
+      return makeLexemeToken(x, PLUS, '+');
     case '?':
-      lexerPosition++;
-      return makeLexemeToken(QUESTION, '?');
+      x->lexerPosition++;
+      return makeLexemeToken(x, QUESTION, '?');
     case '\\':
-      lexerPosition++;
-      return makeLexemeToken(BSLASH, '\\');
+      x->lexerPosition++;
+      return makeLexemeToken(x, BSLASH, '\\');
   }
-  Token *result = makeLexemeToken(LITERAL, lexerContent[lexerPosition]);
-  lexerPosition++;
+  Token *result = makeLexemeToken(x, LITERAL, x->lexerContent[x->lexerPosition]);
+  x->lexerPosition++;
   return result;
 }
 
-Token *peek() {
-  Token *lexed = lex();
+Token *peek(Lexer *x) {
+  Token *lexed = lex(x);
   if (lexed->kind != EOF)
-    lexerPosition--;
+    x->lexerPosition--;
   return lexed;
 }
 
@@ -140,235 +146,241 @@ void insertArray(char **array, char *key) {
     }
 }
 
-char *drawKey(Node *node1, Node *node2, char fromValue, char toValue) {
-  char *result = malloc(1024);
+char *drawKey(Lexer *x, Node *node1, Node *node2, char fromValue, char toValue) {
+  char *result = alloc(x->arena, 1024);
   sprintf(result, "%p%p%c%c", node1, node2, fromValue, toValue);
   return result;
 }
 
-char *getFinishNodeKey(Node *node) {
-  char *result = malloc(1024);
+char *getFinishNodeKey(Lexer *x, Node *node) {
+  char *result = alloc(x->arena, 1024);
   sprintf(result, "%p", node);
   return result;
 }
 
-void drawNFA(Node *nfa) {
-  if (!drawSeen)
-    drawSeen = calloc(1024, sizeof(char *));
+void drawNFA(Node *nfa, Lexer *x) {
+  if (!x->drawSeen)
+    x->drawSeen = alloc(x->arena, 1024*sizeof(char *));
   for (int i = 0; i < 100; i++)
     if (nfa->transitions[i]) {
-      printf("%d -> %d [label=\"%c-%c\"];\n", nfa, nfa->transitions[i]->to, nfa->transitions[i]->fromValue, nfa->transitions[i]->toValue);
-      if (!inArray(drawSeen, drawKey(nfa, nfa->transitions[i]->to, nfa->transitions[i]->fromValue, nfa->transitions[i]->toValue))) {
-        insertArray(drawSeen, drawKey(nfa, nfa->transitions[i]->to, nfa->transitions[i]->fromValue, nfa->transitions[i]->toValue));
-        drawNFA(nfa->transitions[i]->to);
+      printf("%p -> %p [label=\"%c-%c\"];\n", nfa, nfa->transitions[i]->to, nfa->transitions[i]->fromValue, nfa->transitions[i]->toValue);
+      if (!inArray(x->drawSeen, drawKey(x, nfa, nfa->transitions[i]->to, nfa->transitions[i]->fromValue, nfa->transitions[i]->toValue))) {
+        insertArray(x->drawSeen, drawKey(x, nfa, nfa->transitions[i]->to, nfa->transitions[i]->fromValue, nfa->transitions[i]->toValue));
+        drawNFA(nfa->transitions[i]->to, x);
       }
     }
 }
 
-Node *getFinishNode(Node *node) {
-  if (!getFinishNodeSeen)
-    getFinishNodeSeen = calloc(1024, sizeof(char *));
+Node *getFinishNode(Node *node, Lexer *x) {
+  if (!x->getFinishNodeSeen)
+    x->getFinishNodeSeen = alloc(x->arena, 1024*sizeof(char *));
   if (node->isFinish)
     return node;
   for (int i = 0; i < 100; i++)
     if (node->transitions[i] != NULL)
-      if (!inArray(getFinishNodeSeen, getFinishNodeKey(node->transitions[i]->to))) {
-        insertArray(getFinishNodeSeen, getFinishNodeKey(node->transitions[i]->to));
-        return getFinishNode(node->transitions[i]->to);
+      if (!inArray(x->getFinishNodeSeen, getFinishNodeKey(x, node->transitions[i]->to))) {
+        insertArray(x->getFinishNodeSeen, getFinishNodeKey(x, node->transitions[i]->to));
+        return getFinishNode(node->transitions[i]->to, x);
       }
   return NULL;
 }
 
-Node *reToNFA(const char *re) {
-  if (re) initLexer(re);
+Node *runNFA(Lexer *x) {
   Token *token;
-  Node *entry = makeNode(true, true);
+  Node *entry = makeNode(x, true, true);
   Node *last = entry;
-  while ((token = lex())->kind != EOF) {
-    getFinishNodeSeen = NULL;
-    if (inBackslash) {
-      inBackslash = false;
-      Node *node = makeNode(false, true);
-      last->transitions[0] = makeTransition(token->lexeme, token->lexeme, node);
+  while ((token = lex(x))->kind != EOF) {
+    x->getFinishNodeSeen = NULL;
+    if (x->inBackslash) {
+      x->inBackslash = false;
+      Node *node = makeNode(x, false, true);
+      last->transitions[0] = makeTransition(x, token->lexeme, token->lexeme, node);
       last->isFinish = false;
       last = node;
       continue;
     }
-    if (peek()->kind == OPARAN) {
-      lastBeforeParanEntry = beforeParanEntry;
-      beforeParanEntry = last;
+    if (peek(x)->kind == OPARAN) {
+      x->lastBeforeParanEntry = x->beforeParanEntry;
+      x->beforeParanEntry = last;
     }
     if (token->kind == BSLASH) {
-      inBackslash = true;
+      x->inBackslash = true;
     }
     if (token->kind == OPARAN) {
-      paranEntry = last;
+      x->paranEntry = last;
     }
     if (token->kind == CPARAN) {
-      if (inPipe) {
-        inPipe = false;
-        pipeSeen = true;
+      if (x->inPipe) {
+        x->inPipe = false;
+        x->pipeSeen = true;
         return entry;
       }
     }
     if (token->kind == LITERAL) {
-      Node *node = makeNode(false, true);
-      last->transitions[0] = makeTransition(token->lexeme, token->lexeme, node);
+      Node *node = makeNode(x, false, true);
+      last->transitions[0] = makeTransition(x, token->lexeme, token->lexeme, node);
       last->isFinish = false;
       last = node;
     }
     if (token->kind == PIPE) {
-      inPipe = true;
-      if (!paranEntry) {
+      x->inPipe = true;
+      if (!x->paranEntry) {
         Node *pastEntry = entry;
         pastEntry->isStart = false;
 
-        entry = makeNode(true, false);
+        entry = makeNode(x, true, false);
 
-        entry->transitions[0] = makeTransition('\0', '\0', pastEntry);
-        Node *firstFinish = getFinishNode(pastEntry);
+        entry->transitions[0] = makeTransition(x, '\0', '\0', pastEntry);
+        Node *firstFinish = getFinishNode(pastEntry, x);
         firstFinish->isFinish = false;
 
-        Node *second = reToNFA(NULL);
-        Node *secondFinish = getFinishNode(second);
+        Node *second = runNFA(x);
+        Node *secondFinish = getFinishNode(second, x);
         secondFinish->isFinish = false;
-        entry->transitions[1] = makeTransition('\0', '\0', second);
+        entry->transitions[1] = makeTransition(x, '\0', '\0', second);
 
-        Node *finish = makeNode(false, true);
-        firstFinish->transitions[0] = makeTransition('\0', '\0', finish);
-        secondFinish->transitions[0] = makeTransition('\0', '\0', finish);
+        Node *finish = makeNode(x, false, true);
+        firstFinish->transitions[0] = makeTransition(x, '\0', '\0', finish);
+        secondFinish->transitions[0] = makeTransition(x, '\0', '\0', finish);
 
         last = finish;
       } else {
-        Node *pipeEntry = makeNode(beforeParanEntry ? false : true, false);
-        if (lastBeforeParanEntry) {
-          lastBeforeParanEntry->transitions[0] = makeTransition(lastBeforeParanEntry->transitions[0]->fromValue, lastBeforeParanEntry->transitions[0]->toValue, pipeEntry);
-          lastBeforeParanEntry = NULL;
+        Node *pipeEntry = makeNode(x, x->beforeParanEntry ? false : true, false);
+        if (x->lastBeforeParanEntry) {
+          x->lastBeforeParanEntry->transitions[0] = makeTransition(x, x->lastBeforeParanEntry->transitions[0]->fromValue, x->lastBeforeParanEntry->transitions[0]->toValue, pipeEntry);
+          x->lastBeforeParanEntry = NULL;
         }
-        else if (beforeParanEntry) {
-          beforeParanEntry->transitions[0] = makeTransition(beforeParanEntry->transitions[0]->fromValue, beforeParanEntry->transitions[0]->toValue, pipeEntry);
-          beforeParanEntry = pipeEntry;
+        else if (x->beforeParanEntry) {
+          x->beforeParanEntry->transitions[0] = makeTransition(x, x->beforeParanEntry->transitions[0]->fromValue, x->beforeParanEntry->transitions[0]->toValue, pipeEntry);
+          x->beforeParanEntry = pipeEntry;
         } else {
           entry = pipeEntry;
-          beforeParanEntry = entry;
+          x->beforeParanEntry = entry;
         }
-        pipeEntry->transitions[0] = makeTransition('\0', '\0', paranEntry);
+        pipeEntry->transitions[0] = makeTransition(x, '\0', '\0', x->paranEntry);
 
-        Node *firstFinish = getFinishNode(paranEntry);
+        Node *firstFinish = getFinishNode(x->paranEntry, x);
         firstFinish->isFinish = false;
 
-        Node *second = reToNFA(NULL);
-        Node *secondFinish = getFinishNode(second);
+        Node *second = runNFA(x);
+        Node *secondFinish = getFinishNode(second, x);
         secondFinish->isFinish = false;
-        pipeEntry->transitions[1] = makeTransition('\0', '\0', second);
+        pipeEntry->transitions[1] = makeTransition(x, '\0', '\0', second);
 
-        Node *finish = makeNode(false, true);
-        firstFinish->transitions[0] = makeTransition('\0', '\0', finish);
-        secondFinish->transitions[0] = makeTransition('\0', '\0', finish);
+        Node *finish = makeNode(x, false, true);
+        firstFinish->transitions[0] = makeTransition(x, '\0', '\0', finish);
+        secondFinish->transitions[0] = makeTransition(x, '\0', '\0', finish);
 
         last = finish;
       }
     }
     if (token->kind == STAR) {
-      if (!paranEntry) {
+      if (!x->paranEntry) {
         Node *pastEntry = entry;
         pastEntry->isStart = false;
 
-        Node *finish = makeNode(false, true);
-        entry = makeNode(true, false);
+        Node *finish = makeNode(x, false, true);
+        entry = makeNode(x, true, false);
 
-        entry->transitions[0] = makeTransition('\0', '\0', pastEntry);
-        entry->transitions[1] = makeTransition('\0', '\0', finish);
-        Node *firstFinish = getFinishNode(pastEntry);
+        entry->transitions[0] = makeTransition(x, '\0', '\0', pastEntry);
+        entry->transitions[1] = makeTransition(x, '\0', '\0', finish);
+        Node *firstFinish = getFinishNode(pastEntry, x);
         firstFinish->isFinish = false;
-        firstFinish->transitions[0] = makeTransition('\0', '\0', finish);
-        firstFinish->transitions[1] = makeTransition('\0', '\0', pastEntry);
+        firstFinish->transitions[0] = makeTransition(x, '\0', '\0', finish);
+        firstFinish->transitions[1] = makeTransition(x, '\0', '\0', pastEntry);
 
         last = finish;
       } else {
-        Node *starEntry = makeNode(beforeParanEntry ? false : true, false);
-        if (lastBeforeParanEntry) {
-          lastBeforeParanEntry->transitions[0] = makeTransition(lastBeforeParanEntry->transitions[0]->fromValue, lastBeforeParanEntry->transitions[0]->toValue, starEntry);
-          lastBeforeParanEntry = NULL;
+        Node *starEntry = makeNode(x, x->beforeParanEntry ? false : true, false);
+        if (x->lastBeforeParanEntry) {
+          x->lastBeforeParanEntry->transitions[0] = makeTransition(x, x->lastBeforeParanEntry->transitions[0]->fromValue, x->lastBeforeParanEntry->transitions[0]->toValue, starEntry);
+          x->lastBeforeParanEntry = NULL;
         }
-        else if (beforeParanEntry)
-          beforeParanEntry->transitions[0] = makeTransition(beforeParanEntry->transitions[0]->fromValue, beforeParanEntry->transitions[0]->toValue, starEntry);
+        else if (x->beforeParanEntry)
+          x->beforeParanEntry->transitions[0] = makeTransition(x, x->beforeParanEntry->transitions[0]->fromValue, x->beforeParanEntry->transitions[0]->toValue, starEntry);
         else
           entry = starEntry;
 
-        Node *finish = makeNode(false, true);
+        Node *finish = makeNode(x, false, true);
 
-        starEntry->transitions[0] = makeTransition('\0', '\0', paranEntry);
-        starEntry->transitions[1] = makeTransition('\0', '\0', finish);
-        Node *firstFinish = getFinishNode(paranEntry);
+        starEntry->transitions[0] = makeTransition(x, '\0', '\0', x->paranEntry);
+        starEntry->transitions[1] = makeTransition(x, '\0', '\0', finish);
+        Node *firstFinish = getFinishNode(x->paranEntry, x);
         firstFinish->isFinish = false;
-        firstFinish->transitions[0] = makeTransition('\0', '\0', finish);
-        firstFinish->transitions[1] = makeTransition('\0', '\0', beforeParanEntry && pipeSeen ? beforeParanEntry : starEntry);
+        firstFinish->transitions[0] = makeTransition(x, '\0', '\0', finish);
+        firstFinish->transitions[1] = makeTransition(x, '\0', '\0', x->beforeParanEntry && x->pipeSeen ? x->beforeParanEntry : starEntry);
 
         last = finish;
       }
     }
     if (token->kind == PLUS) {
-      Node *finish = getFinishNode(entry);
-      finish->transitions[1] = makeTransition('\0', '\0', beforeParanEntry ? beforeParanEntry : entry);
+      Node *finish = getFinishNode(entry, x);
+      finish->transitions[1] = makeTransition(x, '\0', '\0', x->beforeParanEntry ? x->beforeParanEntry : entry);
     }
     if (token->kind == QUESTION) {
-      if (!paranEntry) {
+      if (!x->paranEntry) {
         Node *pastEntry = entry;
         pastEntry->isStart = false;
 
-        entry = makeNode(true, false);
+        entry = makeNode(x, true, false);
 
-        entry->transitions[0] = makeTransition('\0', '\0', pastEntry);
-        Node *firstFinish = getFinishNode(pastEntry);
+        entry->transitions[0] = makeTransition(x, '\0', '\0', pastEntry);
+        Node *firstFinish = getFinishNode(pastEntry, x);
         firstFinish->isFinish = false;
 
-        Node *finish = makeNode(false, true);
-        firstFinish->transitions[0] = makeTransition('\0', '\0', finish);
-        entry->transitions[1] = makeTransition('\0', '\0', finish);
+        Node *finish = makeNode(x, false, true);
+        firstFinish->transitions[0] = makeTransition(x, '\0', '\0', finish);
+        entry->transitions[1] = makeTransition(x, '\0', '\0', finish);
 
         last = finish;
       } else {
-        Node *questionEntry = makeNode(beforeParanEntry ? false : true, false);
-        if (lastBeforeParanEntry) {
-          lastBeforeParanEntry->transitions[0] = makeTransition(lastBeforeParanEntry->transitions[0]->fromValue, lastBeforeParanEntry->transitions[0]->toValue, questionEntry);
-          lastBeforeParanEntry = NULL;
+        Node *questionEntry = makeNode(x, x->beforeParanEntry ? false : true, false);
+        if (x->lastBeforeParanEntry) {
+          x->lastBeforeParanEntry->transitions[0] = makeTransition(x, x->lastBeforeParanEntry->transitions[0]->fromValue, x->lastBeforeParanEntry->transitions[0]->toValue, questionEntry);
+          x->lastBeforeParanEntry = NULL;
         }
-        else if (beforeParanEntry)
-          beforeParanEntry->transitions[0] = makeTransition(beforeParanEntry->transitions[0]->fromValue, beforeParanEntry->transitions[0]->toValue, questionEntry);
+        else if (x->beforeParanEntry)
+          x->beforeParanEntry->transitions[0] = makeTransition(x, x->beforeParanEntry->transitions[0]->fromValue, x->beforeParanEntry->transitions[0]->toValue, questionEntry);
         else
           entry = questionEntry;
 
-        questionEntry->transitions[0] = makeTransition('\0', '\0', paranEntry);
-        Node *firstFinish = getFinishNode(paranEntry);
+        questionEntry->transitions[0] = makeTransition(x, '\0', '\0', x->paranEntry);
+        Node *firstFinish = getFinishNode(x->paranEntry, x);
         firstFinish->isFinish = false;
 
-        Node *finish = makeNode(false, true);
-        firstFinish->transitions[0] = makeTransition('\0', '\0', finish);
-        questionEntry->transitions[1] = makeTransition('\0', '\0', firstFinish);
+        Node *finish = makeNode(x, false, true);
+        firstFinish->transitions[0] = makeTransition(x, '\0', '\0', finish);
+        questionEntry->transitions[1] = makeTransition(x, '\0', '\0', firstFinish);
 
         last = finish;
       }
     }
     if (token->kind == OSBRACKET) {
       int index = 0;
-      Node *node = makeNode(false, true);
-      while (peek()->kind != CSBRACKET) {
-        char fromValue = lex()->lexeme;
-        if (peek()->kind == DASH) {
-          lex();
-          char toValue = lex()->lexeme;
-          last->transitions[index++] = makeTransition(fromValue, toValue, node);
+      Node *node = makeNode(x, false, true);
+      while (peek(x)->kind != CSBRACKET) {
+        char fromValue = lex(x)->lexeme;
+        if (peek(x)->kind == DASH) {
+          lex(x);
+          char toValue = lex(x)->lexeme;
+          last->transitions[index++] = makeTransition(x, fromValue, toValue, node);
         } else {
-          last->transitions[index++] = makeTransition(fromValue, fromValue, node);
+          last->transitions[index++] = makeTransition(x, fromValue, fromValue, node);
         }
       }
-      lex();
+      lex(x);
       last->isFinish = false;
       last = node;
     }
   }
   return entry;
+}
+
+Node *reToNFA(Arena *a, const char *re)
+{
+    Lexer x[1];
+    initLexer(x, a, re);
+    return runNFA(x);
 }
 
 bool test(Node *nfa, const char *target) {

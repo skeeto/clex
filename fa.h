@@ -2,8 +2,10 @@
 #define FA_H
 
 #include <stdbool.h>
+#include "arena.h"
 
 typedef struct Node Node;
+typedef struct Lexer Lexer;
 
 typedef struct Transition {
   char fromValue;
@@ -17,8 +19,8 @@ typedef struct Node {
   Transition **transitions;
 } Node;
 
-Node *reToNFA(const char *re);
+Node *reToNFA(Arena *, const char *re);
 bool test(Node *nfa, const char *target);
-void drawNFA(Node *nfa);
+void drawNFA(Node *nfa, Lexer *x);
 
 #endif

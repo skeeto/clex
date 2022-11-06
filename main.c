@@ -1,8 +1,10 @@
+#define assert(c) if (!(c)) *(volatile int *)0 = 0
+
 #ifdef TEST_CLEX
 
 #include "clex.h"
-#include <assert.h>
 #include <string.h>
+#include <stdlib.h>
 
 typedef enum TokenKind {
   AUTO,
@@ -93,132 +95,138 @@ typedef enum TokenKind {
   IDENTIFIER,
 } TokenKind;
 
-int main(int argc, char *argv[]) {
-  registerKind("auto", AUTO);
-  registerKind("_Bool", BOOL);
-  registerKind("break", BREAK);
-  registerKind("[a-zA-Z_]([a-zA-Z_]|[0-9])*", IDENTIFIER);
-  registerKind(";", SEMICOL);
+int main(void) {
+  Clex c[1];
+  size_t heapsize = 1<<20;
+  char *heap = malloc(heapsize);
 
-  initClex("auto ident1; break;");
+  initClex(c, heap, heapsize);
 
-  Token token = clex();
+  registerKind(c, "auto", AUTO);
+  registerKind(c, "_Bool", BOOL);
+  registerKind(c, "break", BREAK);
+  registerKind(c, "[a-zA-Z_]([a-zA-Z_]|[0-9])*", IDENTIFIER);
+  registerKind(c, ";", SEMICOL);
+
+  char input[] = "auto ident1; break;";
+  beginClex(c, input, sizeof(input));
+
+  Token token = clex(c);
   assert(token.kind == AUTO);
   assert(strcmp(token.lexeme, "auto") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == IDENTIFIER);
   assert(strcmp(token.lexeme, "ident1") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == SEMICOL);
   assert(strcmp(token.lexeme, ";") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == BREAK);
   assert(strcmp(token.lexeme, "break") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == SEMICOL);
   assert(strcmp(token.lexeme, ";") == 0);
 
-  deleteKinds();
-
-  registerKind("auto", AUTO);
-  registerKind("_Bool", BOOL);
-  registerKind("break", BREAK);
-  registerKind("case", CASE);
-  registerKind("char", CHAR);
-  registerKind("_Complex", COMPLEX);
-  registerKind("const", CONST);
-  registerKind("continue", CONTINUE);
-  registerKind("default", DEFAULT);
-  registerKind("do", DO);
-  registerKind("double", DOUBLE);
-  registerKind("else", ELSE);
-  registerKind("enum", ENUM);
-  registerKind("extern", EXTERN);
-  registerKind("float", FLOAT);
-  registerKind("for", FOR);
-  registerKind("goto", GOTO);
-  registerKind("if", IF);
-  registerKind("_Imaginary", IMAGINARY);
-  registerKind("inline", INLINE);
-  registerKind("int", INT);
-  registerKind("long", LONG);
-  registerKind("register", REGISTER);
-  registerKind("restrict", RESTRICT);
-  registerKind("return", RETURN);
-  registerKind("short", SHORT);
-  registerKind("signed", SIGNED);
-  registerKind("sizeof", SIZEOF);
-  registerKind("static", STATIC);
-  registerKind("struct", STRUCT);
-  registerKind("switch", SWITCH);
-  registerKind("typedef", TYPEDEF);
-  registerKind("union", UNION);
-  registerKind("unsigned", UNSIGNED);
-  registerKind("void", VOID);
-  registerKind("volatile", VOLATILE);
-  registerKind("while", WHILE);
-  registerKind("...", ELLIPSIS);
-  registerKind(">>=", RIGHT_ASSIGN);
-  registerKind("<<=", LEFT_ASSIGN);
-  registerKind("\\+=", ADD_ASSIGN);
-  registerKind("-=", SUB_ASSIGN);
-  registerKind("\\*=", MUL_ASSIGN);
-  registerKind("/=", DIV_ASSIGN);
-  registerKind("%=", MOD_ASSIGN);
-  registerKind("&=", AND_ASSIGN);
-  registerKind("^=", XOR_ASSIGN);
-  registerKind("\\|=", OR_ASSIGN);
-  registerKind(">>", RIGHT_OP);
-  registerKind("<<", LEFT_OP);
-  registerKind("\\+\\+", INC_OP);
-  registerKind("--", DEC_OP);
-  registerKind("->", PTR_OP);
-  registerKind("&&", AND_OP);
-  registerKind("\\|\\|", OR_OP);
-  registerKind("<=", LE_OP);
-  registerKind(">=", GE_OP);
-  registerKind("==", EQ_OP);
-  registerKind("!=", NE_OP);
-  registerKind(";", SEMICOL);
-  registerKind("{|<%", OCURLYBRACE);
-  registerKind("}|%>", CCURLYBRACE);
-  registerKind(",", COMMA);
-  registerKind(":", COLON);
-  registerKind("=", EQUAL);
-  registerKind("\\(", OPARAN);
-  registerKind("\\)", CPARAN);
-  registerKind("\\[|<:", OSQUAREBRACE);
-  registerKind("\\]|:>", CSQUAREBRACE);
-  registerKind(".", DOT);
-  registerKind("&", AMPER);
-  registerKind("!", EXCLAMATION);
-  registerKind("~", TILDE);
-  registerKind("-", MINUS);
-  registerKind("\\+", PLUS);
-  registerKind("\\*", STAR);
-  registerKind("/", SLASH);
-  registerKind("%", PERCENT);
-  registerKind("<", RANGLE);
-  registerKind(">", LANGLE);
-  registerKind("^", CARET);
-  registerKind("\\|", PIPE);
-  registerKind("\\?", QUESTION);
-  registerKind("L?\"[ -~]*\"", STRINGLITERAL);
-  registerKind("0[xX][a-fA-F0-9]+([uU])?([lL])?([lL])?", CONSTANT);
-  registerKind("0[0-7]*([uU])?([lL])?([lL])?", CONSTANT);
-  registerKind("[1-9][0-9]*([uU])?([lL])?([lL])?", CONSTANT);
-  registerKind("L?'[ -~]*'", CONSTANT);
-  registerKind("[0-9]+[Ee][+-]?[0-9]+[fFlL]", CONSTANT);
-  registerKind("[0-9]*.[0-9]+[Ee][+-]?[fFlL]", CONSTANT);
-  registerKind("[0-9]+.[0-9]*[Ee][+-]?[fFlL]", CONSTANT);
-  registerKind("0[xX][a-fA-F0-9]+[Pp][+-]?[0-9]+([fFlL])?", CONSTANT);
-  registerKind("0[xX][a-fA-F0-9]*.[a-fA-F0-9]+[Pp][+-]?[0-9]+([fFlL])?", CONSTANT);
-  registerKind("0[xX][a-fA-F0-9]+.[a-fA-F0-9]+[Pp][+-]?[0-9]+([fFlL])?", CONSTANT);
-  registerKind("[a-zA-Z_]([a-zA-Z_]|[0-9])*", IDENTIFIER);
+  initClex(c, heap, heapsize);
+  registerKind(c, "auto", AUTO);
+  registerKind(c, "_Bool", BOOL);
+  registerKind(c, "break", BREAK);
+  registerKind(c, "case", CASE);
+  registerKind(c, "char", CHAR);
+  registerKind(c, "_Complex", COMPLEX);
+  registerKind(c, "const", CONST);
+  registerKind(c, "continue", CONTINUE);
+  registerKind(c, "default", DEFAULT);
+  registerKind(c, "do", DO);
+  registerKind(c, "double", DOUBLE);
+  registerKind(c, "else", ELSE);
+  registerKind(c, "enum", ENUM);
+  registerKind(c, "extern", EXTERN);
+  registerKind(c, "float", FLOAT);
+  registerKind(c, "for", FOR);
+  registerKind(c, "goto", GOTO);
+  registerKind(c, "if", IF);
+  registerKind(c, "_Imaginary", IMAGINARY);
+  registerKind(c, "inline", INLINE);
+  registerKind(c, "int", INT);
+  registerKind(c, "long", LONG);
+  registerKind(c, "register", REGISTER);
+  registerKind(c, "restrict", RESTRICT);
+  registerKind(c, "return", RETURN);
+  registerKind(c, "short", SHORT);
+  registerKind(c, "signed", SIGNED);
+  registerKind(c, "sizeof", SIZEOF);
+  registerKind(c, "static", STATIC);
+  registerKind(c, "struct", STRUCT);
+  registerKind(c, "switch", SWITCH);
+  registerKind(c, "typedef", TYPEDEF);
+  registerKind(c, "union", UNION);
+  registerKind(c, "unsigned", UNSIGNED);
+  registerKind(c, "void", VOID);
+  registerKind(c, "volatile", VOLATILE);
+  registerKind(c, "while", WHILE);
+  registerKind(c, "...", ELLIPSIS);
+  registerKind(c, ">>=", RIGHT_ASSIGN);
+  registerKind(c, "<<=", LEFT_ASSIGN);
+  registerKind(c, "\\+=", ADD_ASSIGN);
+  registerKind(c, "-=", SUB_ASSIGN);
+  registerKind(c, "\\*=", MUL_ASSIGN);
+  registerKind(c, "/=", DIV_ASSIGN);
+  registerKind(c, "%=", MOD_ASSIGN);
+  registerKind(c, "&=", AND_ASSIGN);
+  registerKind(c, "^=", XOR_ASSIGN);
+  registerKind(c, "\\|=", OR_ASSIGN);
+  registerKind(c, ">>", RIGHT_OP);
+  registerKind(c, "<<", LEFT_OP);
+  registerKind(c, "\\+\\+", INC_OP);
+  registerKind(c, "--", DEC_OP);
+  registerKind(c, "->", PTR_OP);
+  registerKind(c, "&&", AND_OP);
+  registerKind(c, "\\|\\|", OR_OP);
+  registerKind(c, "<=", LE_OP);
+  registerKind(c, ">=", GE_OP);
+  registerKind(c, "==", EQ_OP);
+  registerKind(c, "!=", NE_OP);
+  registerKind(c, ";", SEMICOL);
+  registerKind(c, "{|<%", OCURLYBRACE);
+  registerKind(c, "}|%>", CCURLYBRACE);
+  registerKind(c, ",", COMMA);
+  registerKind(c, ":", COLON);
+  registerKind(c, "=", EQUAL);
+  registerKind(c, "\\(", OPARAN);
+  registerKind(c, "\\)", CPARAN);
+  registerKind(c, "\\[|<:", OSQUAREBRACE);
+  registerKind(c, "\\]|:>", CSQUAREBRACE);
+  registerKind(c, ".", DOT);
+  registerKind(c, "&", AMPER);
+  registerKind(c, "!", EXCLAMATION);
+  registerKind(c, "~", TILDE);
+  registerKind(c, "-", MINUS);
+  registerKind(c, "\\+", PLUS);
+  registerKind(c, "\\*", STAR);
+  registerKind(c, "/", SLASH);
+  registerKind(c, "%", PERCENT);
+  registerKind(c, "<", RANGLE);
+  registerKind(c, ">", LANGLE);
+  registerKind(c, "^", CARET);
+  registerKind(c, "\\|", PIPE);
+  registerKind(c, "\\?", QUESTION);
+  registerKind(c, "L?\"[ -~]*\"", STRINGLITERAL);
+  registerKind(c, "0[xX][a-fA-F0-9]+([uU])?([lL])?([lL])?", CONSTANT);
+  registerKind(c, "0[0-7]*([uU])?([lL])?([lL])?", CONSTANT);
+  registerKind(c, "[1-9][0-9]*([uU])?([lL])?([lL])?", CONSTANT);
+  registerKind(c, "L?'[ -~]*'", CONSTANT);
+  registerKind(c, "[0-9]+[Ee][+-]?[0-9]+[fFlL]", CONSTANT);
+  registerKind(c, "[0-9]*.[0-9]+[Ee][+-]?[fFlL]", CONSTANT);
+  registerKind(c, "[0-9]+.[0-9]*[Ee][+-]?[fFlL]", CONSTANT);
+  registerKind(c, "0[xX][a-fA-F0-9]+[Pp][+-]?[0-9]+([fFlL])?", CONSTANT);
+  registerKind(c, "0[xX][a-fA-F0-9]*.[a-fA-F0-9]+[Pp][+-]?[0-9]+([fFlL])?", CONSTANT);
+  registerKind(c, "0[xX][a-fA-F0-9]+.[a-fA-F0-9]+[Pp][+-]?[0-9]+([fFlL])?", CONSTANT);
+  registerKind(c, "[a-zA-Z_]([a-zA-Z_]|[0-9])*", IDENTIFIER);
   // TODO: Add comment // and /* */
   // TODO: Add #
 
@@ -234,99 +242,104 @@ int main(int argc, char *argv[]) {
   fclose(f);
   */
 
-  initClex("int main(int argc, char *argv[]) {\nreturn 23;\n}");
+  char input2[] = "int main(int argc, char *argv[]) {\nreturn 23;\n}";
+  beginClex(c, input2, sizeof(input2));
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == INT);
   assert(strcmp(token.lexeme, "int") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == IDENTIFIER);
   assert(strcmp(token.lexeme, "main") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == OPARAN);
   assert(strcmp(token.lexeme, "(") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == INT);
   assert(strcmp(token.lexeme, "int") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == IDENTIFIER);
   assert(strcmp(token.lexeme, "argc") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == COMMA);
   assert(strcmp(token.lexeme, ",") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == CHAR);
   assert(strcmp(token.lexeme, "char") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == STAR);
   assert(strcmp(token.lexeme, "*") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == IDENTIFIER);
   assert(strcmp(token.lexeme, "argv") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == OSQUAREBRACE);
   assert(strcmp(token.lexeme, "[") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == CSQUAREBRACE);
   assert(strcmp(token.lexeme, "]") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == CPARAN);
   assert(strcmp(token.lexeme, ")") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == OCURLYBRACE);
   assert(strcmp(token.lexeme, "{") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == RETURN);
   assert(strcmp(token.lexeme, "return") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == CONSTANT);
   assert(strcmp(token.lexeme, "23") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == SEMICOL);
   assert(strcmp(token.lexeme, ";") == 0);
 
-  token = clex();
+  token = clex(c);
   assert(token.kind == CCURLYBRACE);
   assert(strcmp(token.lexeme, "}") == 0);
+
+  free(heap);
 }
 #endif
 
 #ifdef TEST_REGEX
 
 #include "fa.h"
-#include <assert.h>
+#include <stdlib.h>
 
-int main(int argc, char *argv) {
-  Node *nfa = reToNFA("a");
+int main(void) {
+  Arena a[1] = {{malloc(1<<20), 1<<20, 0}};
+
+  Node *nfa = reToNFA(a, "a");
   assert(test(nfa, "a") == true);
   assert(test(nfa, "b") == false);
 
-  nfa = reToNFA("ab");
+  nfa = reToNFA(a, "ab");
   assert(test(nfa, "ab") == true);
   assert(test(nfa, "a") == false);
   assert(test(nfa, "b") == false);
 
-  nfa = reToNFA("ab|c");
+  nfa = reToNFA(a, "ab|c");
   assert(test(nfa, "ab") == true);
   assert(test(nfa, "c") == true);
   assert(test(nfa, "abc") == false);
 
-  nfa = reToNFA("ab*c");
+  nfa = reToNFA(a, "ab*c");
   assert(test(nfa, "c") == true);
   assert(test(nfa, "abc") == true);
   assert(test(nfa, "ababc") == true);
@@ -334,7 +347,7 @@ int main(int argc, char *argv) {
   assert(test(nfa, "abd") == false);
   assert(test(nfa, "acc") == false);
 
-  nfa = reToNFA("ab+c");
+  nfa = reToNFA(a, "ab+c");
   assert(test(nfa, "c") == false);
   assert(test(nfa, "abc") == true);
   assert(test(nfa, "ababc") == true);
@@ -342,7 +355,7 @@ int main(int argc, char *argv) {
   assert(test(nfa, "abd") == false);
   assert(test(nfa, "acc") == false);
 
-  nfa = reToNFA("ab?c");
+  nfa = reToNFA(a, "ab?c");
   assert(test(nfa, "c") == true);
   assert(test(nfa, "abc") == true);
   assert(test(nfa, "ababc") == false);
@@ -350,7 +363,7 @@ int main(int argc, char *argv) {
   assert(test(nfa, "abd") == false);
   assert(test(nfa, "acc") == false);
 
-  nfa = reToNFA("[ab]c");
+  nfa = reToNFA(a, "[ab]c");
   assert(test(nfa, "c") == false);
   assert(test(nfa, "ac") == true);
   assert(test(nfa, "bc") == true);
@@ -358,7 +371,7 @@ int main(int argc, char *argv) {
   assert(test(nfa, "bd") == false);
   assert(test(nfa, "acc") == false);
 
-  nfa = reToNFA("[A-Za-z]c");
+  nfa = reToNFA(a, "[A-Za-z]c");
   assert(test(nfa, "c") == false);
   assert(test(nfa, "ac") == true);
   assert(test(nfa, "bc") == true);
@@ -366,16 +379,16 @@ int main(int argc, char *argv) {
   assert(test(nfa, "Zd") == false);
   assert(test(nfa, "Zc") == true);
 
-  nfa = reToNFA("[A-Za-z]*c");
+  nfa = reToNFA(a, "[A-Za-z]*c");
   assert(test(nfa, "AZazc") == true);
   assert(test(nfa, "AZaz") == false);
 
-  nfa = reToNFA("[A-Za-z]?c");
+  nfa = reToNFA(a, "[A-Za-z]?c");
   assert(test(nfa, "Ac") == true);
   assert(test(nfa, "c") == true);
   assert(test(nfa, "A") == false);
 
-  nfa = reToNFA("a(bc|de)f");
+  nfa = reToNFA(a, "a(bc|de)f");
   assert(test(nfa, "abcf") == true);
   assert(test(nfa, "adef") == true);
   assert(test(nfa, "af") == false);
@@ -385,24 +398,24 @@ int main(int argc, char *argv) {
   assert(test(nfa, "bcf") == false);
   assert(test(nfa, "abc") == false);
 
-  nfa = reToNFA("(bc|de)f");
+  nfa = reToNFA(a, "(bc|de)f");
   assert(test(nfa, "bcf") == true);
   assert(test(nfa, "def") == true);
 
-  nfa = reToNFA("a(bc)*f");
+  nfa = reToNFA(a, "a(bc)*f");
   assert(test(nfa, "af") == true);
   assert(test(nfa, "abcf") == true);
   assert(test(nfa, "abcbcf") == true);
   assert(test(nfa, "abcbf") == false);
 
-  nfa = reToNFA("(bc)*f");
+  nfa = reToNFA(a, "(bc)*f");
   assert(test(nfa, "f") == true);
   assert(test(nfa, "bcf") == true);
   assert(test(nfa, "bcbcf") == true);
   assert(test(nfa, "bcbf") == false);
   assert(test(nfa, "bc") == false);
 
-  nfa = reToNFA("a(bc|de)*f");
+  nfa = reToNFA(a, "a(bc|de)*f");
   assert(test(nfa, "af") == true);
   assert(test(nfa, "abcf") == true);
   assert(test(nfa, "adef") == true);
@@ -414,7 +427,7 @@ int main(int argc, char *argv) {
   assert(test(nfa, "bcf") == false);
   assert(test(nfa, "abc") == false);
 
-  nfa = reToNFA("a(bc|de)+f");
+  nfa = reToNFA(a, "a(bc|de)+f");
   assert(test(nfa, "af") == false);
   assert(test(nfa, "abcf") == true);
   assert(test(nfa, "adef") == true);
@@ -426,7 +439,7 @@ int main(int argc, char *argv) {
   assert(test(nfa, "bcf") == false);
   assert(test(nfa, "abc") == false);
 
-  nfa = reToNFA("a(bc|de)?f");
+  nfa = reToNFA(a, "a(bc|de)?f");
   assert(test(nfa, "af") == true);
   assert(test(nfa, "abcf") == true);
   assert(test(nfa, "adef") == true);
@@ -438,51 +451,53 @@ int main(int argc, char *argv) {
   assert(test(nfa, "bcf") == false);
   assert(test(nfa, "abc") == false);
 
-  nfa = reToNFA("([a-zA-Z_])*");
+  nfa = reToNFA(a, "([a-zA-Z_])*");
   assert(test(nfa, "valid") == true);
   assert(test(nfa, "Valid") == true);
   assert(test(nfa, "_var1") == false);
   assert(test(nfa, "vv1") == false);
   assert(test(nfa, "v1") == false);
 
-  nfa = reToNFA("([a-zA-Z_]|[0-9])*");
+  nfa = reToNFA(a, "([a-zA-Z_]|[0-9])*");
   assert(test(nfa, "valid") == true);
   assert(test(nfa, "Valid") == true);
   assert(test(nfa, "_var1") == true);
   assert(test(nfa, "vv1") == true);
   assert(test(nfa, "v1") == true);
 
-  nfa = reToNFA("[a-zA-Z_]([a-zA-Z_]|[0-9])*");
+  nfa = reToNFA(a, "[a-zA-Z_]([a-zA-Z_]|[0-9])*");
   assert(test(nfa, "valid") == true);
   assert(test(nfa, "Valid") == true);
   assert(test(nfa, "_var1") == true);
   assert(test(nfa, "vv1") == true);
   assert(test(nfa, "v1") == true);
 
-  nfa = reToNFA("\\|");
+  nfa = reToNFA(a, "\\|");
   assert(test(nfa, "|") == true);
 
-  nfa = reToNFA("\\[");
+  nfa = reToNFA(a, "\\[");
   assert(test(nfa, "[") == true);
 
-  nfa = reToNFA("\\]");
+  nfa = reToNFA(a, "\\]");
   assert(test(nfa, "]") == true);
 
-  nfa = reToNFA("\\+");
+  nfa = reToNFA(a, "\\+");
   assert(test(nfa, "+") == true);
 
-  nfa = reToNFA("\\*");
+  nfa = reToNFA(a, "\\*");
   assert(test(nfa, "*") == true);
 
-  nfa = reToNFA("\\?");
+  nfa = reToNFA(a, "\\?");
   assert(test(nfa, "?") == true);
 
-  nfa = reToNFA("(u)(a)");
+  nfa = reToNFA(a, "(u)(a)");
   assert(test(nfa, "ua") == true);
 
-  nfa = reToNFA("[1-9][0-9]*([uU])?([lL])?([lL])?");
+  nfa = reToNFA(a, "[1-9][0-9]*([uU])?([lL])?([lL])?");
   assert(test(nfa, "23") == true);
   assert(test(nfa, "23u") == true);
   assert(test(nfa, "23UlL") == true);
+
+  free(a->buf);
 }
 #endif
